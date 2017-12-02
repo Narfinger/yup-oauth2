@@ -23,6 +23,7 @@ use storage::{hash_scopes, MemoryStorage, TokenStorage};
 use types::{StringError, Token};
 
 use hyper::header;
+use hyper_rustls::HttpsConnector;
 use url::form_urlencoded;
 
 use rustls::{self, PrivateKey};
@@ -133,7 +134,7 @@ fn init_claims_from_key<'a, I, T>(key: &ServiceAccountKey, scopes: I) -> Claims
     where T: AsRef<str> + 'a,
           I: IntoIterator<Item = &'a T>
 {
-    let iat = chrono::UTC::now().timestamp();
+    let iat = chrono::Utc::now().timestamp();
     let expiry = iat + 3600 - 5; // Max validity is 1h.
 
     let mut scopes_string = scopes.into_iter().fold(String::new(), |mut acc, sc| {
@@ -179,7 +180,7 @@ struct TokenResponse {
 
 impl TokenResponse {
     fn to_oauth_token(self) -> Token {
-        let expires_ts = chrono::UTC::now().timestamp() + self.expires_in.unwrap_or(0);
+        let expires_ts = chrono::Utc::now().timestamp() + self.expires_in.unwrap_or(0);
 
         Token {
             access_token: self.access_token.unwrap(),
@@ -192,7 +193,7 @@ impl TokenResponse {
 }
 
 impl<'a, C> ServiceAccountAccess<C>
-    where C: BorrowMut<hyper::Client>
+    where C: BorrowMut<hyper::Client<HttpsConnector>>
 {
     /// Returns a new `ServiceAccountAccess` token source.
     #[allow(dead_code)]
@@ -220,7 +221,7 @@ impl<'a, C> ServiceAccountAccess<C>
         let signed = try!(JWT::new(claims)
             .sign(self.key.private_key.as_ref().unwrap()));
 
-        let body = form_urlencoded::serialize(vec![("grant_type".to_string(),
+        let body = form_urlencoded::byte_serialize(vec![("grant_type".to_string(),
                                                     GRANT_TYPE.to_string()),
                                                    ("assertion".to_string(), signed)]);
 
@@ -252,7 +253,7 @@ impl<'a, C> ServiceAccountAccess<C>
     }
 }
 
-impl<C: BorrowMut<hyper::Client>> GetToken for ServiceAccountAccess<C> {
+impl<C: BorrowMut<hyper::Client<HttpsConnector>>> GetToken for ServiceAccountAccess<C> {
     fn token<'b, I, T>(&mut self, scopes: I) -> result::Result<Token, Box<error::Error>>
         where T: AsRef<str> + Ord + 'b,
               I: IntoIterator<Item = &'b T>

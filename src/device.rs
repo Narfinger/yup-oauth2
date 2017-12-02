@@ -7,10 +7,11 @@ use hyper::header::ContentType;
 use url::form_urlencoded;
 use itertools::Itertools;
 use serde_json as json;
-use chrono::{self, UTC};
+use chrono::{self, Utc};
 use std::borrow::BorrowMut;
 use std::io::Read;
 use std::i64;
+use hyper_rustls::HttpsConnector;
 
 use types::{ApplicationSecret, Token, FlowType, Flow, RequestError, JsonError};
 use authenticator_delegate::{PollError, PollInformation};
@@ -46,7 +47,7 @@ impl<C> Flow for DeviceFlow<C> {
     }
 }
 impl<C> DeviceFlow<C>
-    where C: BorrowMut<hyper::Client>
+    where C: BorrowMut<hyper::Client<HttpsConnector>>
 {
 
     pub fn new<S: AsRef<str>>(client: C, secret: &ApplicationSecret, device_code_url: S) -> DeviceFlow<C> {
@@ -87,7 +88,7 @@ impl<C> DeviceFlow<C>
 
         // note: cloned() shouldn't be needed, see issue
         // https://github.com/servo/rust-url/issues/81
-        let req = form_urlencoded::serialize(&[("client_id", &self.application_secret.client_id),
+        let req = form_urlencoded::byte_serialize(&[("client_id", &self.application_secret.client_id),
                                                ("scope",
                                                 &scopes.into_iter()
                                                    .map(|s| s.as_ref())
@@ -133,7 +134,7 @@ impl<C> DeviceFlow<C>
                 let pi = PollInformation {
                     user_code: decoded.user_code,
                     verification_url: decoded.verification_url,
-                    expires_at: UTC::now() + chrono::Duration::seconds(decoded.expires_in),
+                    expires_at: Utc::now() + chrono::Duration::seconds(decoded.expires_in),
                     interval: Duration::from_secs(i64::abs(decoded.interval) as u64),
                 };
                 self.state = Some(DeviceFlowState::Pending(pi.clone()));
@@ -175,14 +176,14 @@ impl<C> DeviceFlow<C>
             _ => panic!("You have to call request_code() beforehand"),
         };
 
-        if pi.expires_at <= UTC::now() {
+        if pi.expires_at <= Utc::now() {
             self.error = Some(PollError::Expired(pi.expires_at));
             self.state = Some(DeviceFlowState::Error);
             return Err(&self.error.as_ref().unwrap());
         }
 
         // We should be ready for a new request
-        let req = form_urlencoded::serialize(&[("client_id", &self.application_secret.client_id[..]),
+        let req = form_urlencoded::byte_serialize(&[("client_id", &self.application_secret.client_id[..]),
                                                ("client_secret", &self.application_secret.client_secret),
                                                ("code", &self.device_code),
                                                ("grant_type",

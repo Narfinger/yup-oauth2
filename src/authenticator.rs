@@ -9,6 +9,7 @@ use std::thread::sleep;
 
 use authenticator_delegate::{AuthenticatorDelegate, PollError, PollInformation};
 use device::{GOOGLE_DEVICE_CODE_URL, DeviceFlow};
+use hyper_rustls::HttpsConnector;
 use installed::{InstalledFlow, InstalledFlowReturnMethod};
 use refresh::{RefreshResult, RefreshFlow};
 use std::time::Duration;
@@ -55,7 +56,7 @@ pub trait GetToken {
 impl<D, S, C> Authenticator<D, S, C>
     where D: AuthenticatorDelegate,
           S: TokenStorage,
-          C: BorrowMut<hyper::Client>
+          C: BorrowMut<hyper::Client<HttpsConnector>>
 {
     /// Returns a new `Authenticator` instance
     ///
@@ -183,7 +184,7 @@ impl<D, S, C> Authenticator<D, S, C>
 impl<D, S, C> GetToken for Authenticator<D, S, C>
     where D: AuthenticatorDelegate,
           S: TokenStorage,
-          C: BorrowMut<hyper::Client>
+          C: BorrowMut<hyper::Client<HttpsConnector>>
 {
     /// Blocks until a token was retrieved from storage, from the server, or until the delegate
     /// decided to abort the attempt, or the user decided not to authorize the application.

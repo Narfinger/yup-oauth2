@@ -1,8 +1,9 @@
 use types::{ApplicationSecret, FlowType, JsonError};
 
-use chrono::UTC;
+use chrono::Utc;
 use hyper;
 use hyper::header::ContentType;
+use hyper_rustls::HttpsConnector;
 use serde_json as json;
 use url::form_urlencoded;
 use super::Token;
@@ -31,7 +32,7 @@ pub enum RefreshResult {
 }
 
 impl<C> RefreshFlow<C>
-    where C: BorrowMut<hyper::Client>
+    where C: BorrowMut<hyper::Client<HttpsConnector>>
 {
     pub fn new(client: C) -> RefreshFlow<C> {
         RefreshFlow {
@@ -64,7 +65,7 @@ impl<C> RefreshFlow<C>
             return &self.result;
         }
 
-        let req = form_urlencoded::serialize(&[("client_id", client_secret.client_id.as_ref()),
+        let req = form_urlencoded::byte_serialize(&[("client_id", client_secret.client_id.as_ref()),
                                                ("client_secret", client_secret.client_secret.as_ref()),
                                                ("refresh_token", refresh_token),
                                                ("grant_type", "refresh_token")]);
@@ -107,7 +108,7 @@ impl<C> RefreshFlow<C>
             token_type: t.token_type,
             refresh_token: refresh_token.to_string(),
             expires_in: None,
-            expires_in_timestamp: Some(UTC::now().timestamp() + t.expires_in),
+            expires_in_timestamp: Some(Utc::now().timestamp() + t.expires_in),
         });
 
         &self.result

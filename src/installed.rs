@@ -14,7 +14,9 @@ use std::sync::Mutex;
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use hyper;
-use hyper::{client, header, server, status, uri};
+use hyper::{client, header, server};
+use hyper_rustls::HttpsConnector;
+use futures;
 use serde_json::error;
 use url::form_urlencoded;
 use url::percent_encoding::{percent_encode, QUERY_ENCODE_SET};
@@ -57,9 +59,11 @@ fn build_authentication_request_url<'a, T, I>(auth_uri: &str,
         })
 }
 
-pub struct InstalledFlow<C> {
+pub struct InstalledFlow<C,S,B>
+    where B: futures::Stream<Error=hyper::Error>, B::Item: AsRef<[u8]>
+{
     client: C,
-    server: Option<server::Listening>,
+    server: Option<server::Server<S,B>>,
     port: Option<u32>,
 
     auth_code_rcv: Option<Receiver<String>>,
@@ -76,13 +80,14 @@ pub enum InstalledFlowReturnMethod {
     HTTPRedirect(u32),
 }
 
-impl<C> InstalledFlow<C>
-    where C: BorrowMut<hyper::Client>
+impl<C,St,B> InstalledFlow<C,St,B>
+    where C: BorrowMut<hyper::Client<HttpsConnector>>,
+          B: futures::Stream<Error=hyper::Error>, B::Item: AsRef<[u8]>
 {
     /// Starts a new Installed App auth flow.
     /// If HTTPRedirect is chosen as method and the server can't be started, the flow falls
     /// back to Interactive.
-    pub fn new(client: C, method: Option<InstalledFlowReturnMethod>) -> InstalledFlow<C> {
+    pub fn new(client: C, method: Option<InstalledFlowReturnMethod>) -> InstalledFlow<C,St,B> {
         let default = InstalledFlow {
             client: client,
             server: None,
@@ -221,7 +226,7 @@ impl<C> InstalledFlow<C>
             Some(p) => redirect_uri = format!("http://localhost:{}", p),
         }
 
-        let body = form_urlencoded::serialize(vec![("code".to_string(), authcode.to_string()),
+        let body = form_urlencoded::byte_serialize(vec![("code".to_string(), authcode.to_string()),
                                                    ("client_id".to_string(),
                                                     appsecret.client_id.clone()),
                                                    ("client_secret".to_string(),
@@ -276,37 +281,42 @@ struct InstalledFlowHandler {
     auth_code_snd: Mutex<Sender<String>>,
 }
 
-impl server::Handler for InstalledFlowHandler {
-    fn handle(&self, rq: server::Request, mut rp: server::Response) {
-        match rq.uri {
-            uri::RequestUri::AbsolutePath(path) => {
-                // We use a fake URL because the redirect goes to a URL, meaning we
-                // can't use the url form decode (because there's slashes and hashes and stuff in
-                // it).
-                let url = hyper::Url::parse(&format!("http://example.com{}", path));
+impl server::Service for InstalledFlowHandler {
+    type Request = hyper::Request;
+    type Response = hyper::Response;
+    type Error = hyper::Error;
+    type Future = Box<Self::Future<Item = Self::Response, Error = hyper::Error>>;
 
-                if url.is_err() {
-                    *rp.status_mut() = status::StatusCode::BadRequest;
-                    let _ = rp.send("Unparseable URL".as_ref());
-                } else {
-                    self.handle_url(url.unwrap());
-                    *rp.status_mut() = status::StatusCode::Ok;
-                    let _ =
-                        rp.send("<html><head><title>Success</title></head><body>You may now \
-                                 close this window.</body></html>"
-                            .as_ref());
-                }
-            }
-            _ => {
-                *rp.status_mut() = status::StatusCode::BadRequest;
-                let _ = rp.send("Invalid Request!".as_ref());
-            }
-        }
+    fn call(&self, rq: server::Request) {
+        // match rq.uri {
+        //     // uri::RequestUri::AbsolutePath(path) => {
+        //     //     // We use a fake URL because the redirect goes to a URL, meaning we
+        //     //     // can't use the url form decode (because there's slashes and hashes and stuff in
+        //     //     // it).
+        //     //     let url = hyper::Uri::parse(&format!("http://example.com{}", path));
+
+        //     //     if url.is_err() {
+        //     //         *rp.status_mut() = status::StatusCode::BadRequest;
+        //     //         let _ = rp.send("Unparseable URL".as_ref());
+        //     //     } else {
+        //     //         self.handle_url(url.unwrap());
+        //     //         *rp.status_mut() = status::StatusCode::Ok;
+        //     //         let _ =
+        //     //             rp.send("<html><head><title>Success</title></head><body>You may now \
+        //     //                      close this window.</body></html>"
+        //     //                 .as_ref());
+        //     //     }
+        //     // }
+        //     _ => {
+        //         *rp.status_mut() = status::StatusCode::BadRequest;
+        //         rp.send("Invalid Request!".as_ref())
+        //     }
+        // }
     }
 }
 
 impl InstalledFlowHandler {
-    fn handle_url(&self, url: hyper::Url) {
+    fn handle_url(&self, url: hyper::Uri) {
         // Google redirects to the specified localhost URL, appending the authorization
         // code, like this: http://localhost:8080/xyz/?code=4/731fJ3BheyCouCniPufAd280GHNV5Ju35yYcGs
         // We take that code and send it to the get_authorization_code() function that
