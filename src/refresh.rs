@@ -64,11 +64,12 @@ impl<C> RefreshFlow<C>
         if let RefreshResult::Success(_) = self.result {
             return &self.result;
         }
-
-        let req = form_urlencoded::byte_serialize(&[("client_id", client_secret.client_id.as_ref()),
-                                               ("client_secret", client_secret.client_secret.as_ref()),
-                                               ("refresh_token", refresh_token),
-                                               ("grant_type", "refresh_token")]);
+        
+        let mut req = String::new();
+        form_urlencoded::Serializer::new(&mut req).extend_pairs(&[("client_id", client_secret.client_id.as_ref()),
+                                                                  ("client_secret", client_secret.client_secret.as_ref()),
+                                                                  ("refresh_token", refresh_token),
+                                                                  ("grant_type", "refresh_token")]);
 
         let json_str: String = match self.client
             .borrow_mut()

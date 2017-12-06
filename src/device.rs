@@ -88,7 +88,10 @@ impl<C> DeviceFlow<C>
 
         // note: cloned() shouldn't be needed, see issue
         // https://github.com/servo/rust-url/issues/81
-        let req = form_urlencoded::byte_serialize(&[("client_id", &self.application_secret.client_id),
+        
+
+        let mut req = String::new();
+        form_urlencoded::Serializer::new(&mut req).extend_pairs(&[("client_id", &self.application_secret.client_id),
                                                ("scope",
                                                 &scopes.into_iter()
                                                    .map(|s| s.as_ref())
@@ -183,11 +186,12 @@ impl<C> DeviceFlow<C>
         }
 
         // We should be ready for a new request
-        let req = form_urlencoded::byte_serialize(&[("client_id", &self.application_secret.client_id[..]),
-                                               ("client_secret", &self.application_secret.client_secret),
-                                               ("code", &self.device_code),
-                                               ("grant_type",
-                                                "http://oauth.net/grant_type/device/1.0")]);
+        let mut req = String::new();
+        form_urlencoded::Serializer::new(&mut req).extend_pairs(&[("client_id", &self.application_secret.client_id[..]),
+                                                                  ("client_secret", &self.application_secret.client_secret),
+                                                                  ("code", &self.device_code),
+                                                                  ("grant_type",
+                                                                   "http://oauth.net/grant_type/device/1.0")]);
 
         let json_str: String = match self.client
             .borrow_mut()

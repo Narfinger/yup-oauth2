@@ -225,15 +225,15 @@ impl<C,St,B> InstalledFlow<C,St,B>
             None => redirect_uri = OOB_REDIRECT_URI.to_string(),
             Some(p) => redirect_uri = format!("http://localhost:{}", p),
         }
-
-        let body = form_urlencoded::byte_serialize(vec![("code".to_string(), authcode.to_string()),
-                                                   ("client_id".to_string(),
-                                                    appsecret.client_id.clone()),
-                                                   ("client_secret".to_string(),
-                                                    appsecret.client_secret.clone()),
-                                                   ("redirect_uri".to_string(), redirect_uri),
-                                                   ("grant_type".to_string(),
-                                                    "authorization_code".to_string())]);
+        let mut body = String::new();
+        form_urlencoded::Serializer::new(&mut body).extend_pairs(vec![("code".to_string(), authcode.to_string()),
+                                                                     ("client_id".to_string(),
+                                                                      appsecret.client_id.clone()),
+                                                                     ("client_secret".to_string(),
+                                                                      appsecret.client_secret.clone()),
+                                                                     ("redirect_uri".to_string(), redirect_uri),
+                                                                     ("grant_type".to_string(),
+                                                                      "authorization_code".to_string())]);
 
         let result: Result<client::Response, hyper::Error> = self.client
             .borrow_mut()
@@ -285,9 +285,9 @@ impl server::Service for InstalledFlowHandler {
     type Request = hyper::Request;
     type Response = hyper::Response;
     type Error = hyper::Error;
-    type Future = Box<Self::Future<Item = Self::Response, Error = hyper::Error>>;
+    type Future = futures::future::FutureResult<Self::Response, hyper::Error>;
 
-    fn call(&self, rq: server::Request) {
+    fn call(&self, rq: server::Request) -> Self::Future {
         // match rq.uri {
         //     // uri::RequestUri::AbsolutePath(path) => {
         //     //     // We use a fake URL because the redirect goes to a URL, meaning we
