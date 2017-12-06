@@ -8,6 +8,7 @@ use url::form_urlencoded;
 use itertools::Itertools;
 use serde_json as json;
 use chrono::{self, Utc};
+use reqwest;
 use std::borrow::BorrowMut;
 use std::io::Read;
 use std::i64;
@@ -88,8 +89,6 @@ impl<C> DeviceFlow<C>
 
         // note: cloned() shouldn't be needed, see issue
         // https://github.com/servo/rust-url/issues/81
-        
-
         let mut req = String::new();
         form_urlencoded::Serializer::new(&mut req).extend_pairs(&[("client_id", &self.application_secret.client_id),
                                                ("scope",
@@ -99,20 +98,20 @@ impl<C> DeviceFlow<C>
                                                    .collect::<String>()
                                                    )]);
 
-        // note: works around bug in rustlang
-        // https://github.com/rust-lang/rust/issues/22252
-        let ret = match self.client
-            .borrow_mut()
-            .post(&self.device_code_url)
+        //this can probably be done better with the form constructor?
+        let client = reqwest::Client::new();
+        let ret = client.post(&self.device_code_url)
             .header(ContentType("application/x-www-form-urlencoded".parse().unwrap()))
             .body(&*req)
-            .send() {
+            .send();
+        
+        match ret {
             Err(err) => {
                 return Err(RequestError::HttpError(err));
             }
             Ok(mut res) => {
-
-
+                
+                
                 #[derive(Deserialize)]
                 struct JsonData {
                     device_code: String,
@@ -122,16 +121,7 @@ impl<C> DeviceFlow<C>
                     interval: i64,
                 }
 
-                let mut json_str = String::new();
-                res.read_to_string(&mut json_str).unwrap();
-
-                // check for error
-                match json::from_str::<JsonError>(&json_str) {
-                    Err(_) => {} // ignore, move on
-                    Ok(res) => return Err(RequestError::from(res)),
-                }
-
-                let decoded: JsonData = json::from_str(&json_str).unwrap();
+                let decoded: JsonData = res.json().unwrap();
 
                 self.device_code = decoded.device_code;
                 let pi = PollInformation {
@@ -144,9 +134,7 @@ impl<C> DeviceFlow<C>
 
                 Ok(pi)
             }
-        };
-
-        ret
+        }
     }
 
     /// If the first call is successful, this method may be called.
@@ -192,28 +180,25 @@ impl<C> DeviceFlow<C>
                                                                   ("code", &self.device_code),
                                                                   ("grant_type",
                                                                    "http://oauth.net/grant_type/device/1.0")]);
-
-        let json_str: String = match self.client
-            .borrow_mut()
-            .post(&self.application_secret.token_uri)
+        
+        //this can probably be done better with the form constructor?
+        let client = reqwest::Client::new();
+        let json_str: String = match client.post(&self.device_code_url)
             .header(ContentType("application/x-www-form-urlencoded".parse().unwrap()))
             .body(&*req)
             .send() {
-            Err(err) => {
-                self.error = Some(PollError::HttpError(err));
-                return Err(self.error.as_ref().unwrap());
-            }
-            Ok(mut res) => {
-                let mut json_str = String::new();
-                res.read_to_string(&mut json_str).unwrap();
-                json_str
-            }
-        };
+                Err(err) => {
+                    self.error = Some(PollError::HttpError(err));
+                    return Err(self.error.as_ref().unwrap());
+                }
+                Ok(mut res) => {
+                    let mut json_str = String::new();
+                    res.read_to_string(&mut json_str).unwrap();
+                    json_str
+                }
+            };
 
-        #[derive(Deserialize)]
-        struct JsonError {
-            error: String,
-        }
+        
 
         match json::from_str::<JsonError>(&json_str) {
             Err(_) => {} // ignore, move on, it's not an error

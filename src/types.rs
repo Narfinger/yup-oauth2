@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc, TimeZone};
 use std::error::Error;
 use std::fmt;
 use std::str::FromStr;
+use reqwest;
 use hyper;
 
 /// A marker trait for all Flows
@@ -19,7 +20,7 @@ pub struct JsonError {
 /// Encapsulates all possible results of the `request_token(...)` operation
 pub enum RequestError {
     /// Indicates connection failure
-    HttpError(hyper::Error),
+    HttpError(reqwest::Error),
     /// The OAuth client was not found
     InvalidClient,
     /// Some requested scopes were invalid. String contains the scopes as part of
@@ -203,7 +204,7 @@ impl Token {
         if self.access_token.len() == 0 {
             panic!("called expired() on unset token");
         }
-        self.expiry_date() <= Utc
+        self.expiry_date() <= DateTime<Utc>
     }
 
     /// Returns a DateTime object representing our expiry date.

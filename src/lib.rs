@@ -76,6 +76,7 @@ extern crate chrono;
 extern crate hyper;
 extern crate hyper_rustls;
 extern crate futures;
+extern crate reqwest;
 extern crate rustls;
 #[cfg(test)]
 extern crate log;
