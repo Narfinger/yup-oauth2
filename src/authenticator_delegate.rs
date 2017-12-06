@@ -6,6 +6,7 @@ use std::error::Error;
 
 use authenticator::Retry;
 use types::RequestError;
+use reqwest;
 
 use chrono::{DateTime, Local, Utc};
 use std::time::Duration;
@@ -37,6 +38,8 @@ impl fmt::Display for PollInformation {
 pub enum PollError {
     /// Connection failure - retry if you think it's worth it
     HttpError(hyper::Error),
+    /// Reqwest Error library connection failure - retry if you think it's worth it
+    ReqwestError(reqwest::Error),
     /// indicates we are expired, including the expiration date
     Expired(DateTime<Utc>),
     /// Indicates that the user declined access. String is server response

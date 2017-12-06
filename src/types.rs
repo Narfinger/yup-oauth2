@@ -20,7 +20,9 @@ pub struct JsonError {
 /// Encapsulates all possible results of the `request_token(...)` operation
 pub enum RequestError {
     /// Indicates connection failure
-    HttpError(reqwest::Error),
+    HttpError(hyper::Error),
+    /// Reqwest Error library, can indicate connection failure
+    ReqwestError(reqwest::Error),
     /// The OAuth client was not found
     InvalidClient,
     /// Some requested scopes were invalid. String contains the scopes as part of
@@ -204,7 +206,7 @@ impl Token {
         if self.access_token.len() == 0 {
             panic!("called expired() on unset token");
         }
-        self.expiry_date() <= DateTime<Utc>
+        self.expiry_date() <= Utc
     }
 
     /// Returns a DateTime object representing our expiry date.

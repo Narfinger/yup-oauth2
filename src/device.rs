@@ -107,7 +107,7 @@ impl<C> DeviceFlow<C>
         
         match ret {
             Err(err) => {
-                return Err(RequestError::HttpError(err));
+                return Err(RequestError::ReqwestError(err));
             }
             Ok(mut res) => {
                 
@@ -188,7 +188,7 @@ impl<C> DeviceFlow<C>
             .body(&*req)
             .send() {
                 Err(err) => {
-                    self.error = Some(PollError::HttpError(err));
+                    self.error = Some(PollError::ReqwestError(err));
                     return Err(self.error.as_ref().unwrap());
                 }
                 Ok(mut res) => {
