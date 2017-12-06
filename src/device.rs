@@ -100,41 +100,32 @@ impl<C> DeviceFlow<C>
 
         //this can probably be done better with the form constructor?
         let client = reqwest::Client::new();
-        let ret = client.post(&self.device_code_url)
+        let res = client.post(&self.device_code_url)
             .header(ContentType("application/x-www-form-urlencoded".parse().unwrap()))
             .body(&*req)
-            .send();
-        
-        match ret {
-            Err(err) => {
-                return Err(RequestError::ReqwestError(err));
-            }
-            Ok(mut res) => {
+            .send()?;
                 
-                
-                #[derive(Deserialize)]
-                struct JsonData {
-                    device_code: String,
-                    user_code: String,
-                    verification_url: String,
-                    expires_in: i64,
-                    interval: i64,
-                }
-
-                let decoded: JsonData = res.json().unwrap();
-
-                self.device_code = decoded.device_code;
-                let pi = PollInformation {
-                    user_code: decoded.user_code,
-                    verification_url: decoded.verification_url,
-                    expires_at: Utc::now() + chrono::Duration::seconds(decoded.expires_in),
-                    interval: Duration::from_secs(i64::abs(decoded.interval) as u64),
-                };
-                self.state = Some(DeviceFlowState::Pending(pi.clone()));
-
-                Ok(pi)
-            }
+        #[derive(Deserialize)]
+        struct JsonData {
+            device_code: String,
+            user_code: String,
+            verification_url: String,
+            expires_in: i64,
+            interval: i64,
         }
+        
+        let decoded: JsonData = res.json().unwrap();
+        
+        self.device_code = decoded.device_code;
+        let pi = PollInformation {
+            user_code: decoded.user_code,
+            verification_url: decoded.verification_url,
+            expires_at: Utc::now() + chrono::Duration::seconds(decoded.expires_in),
+            interval: Duration::from_secs(i64::abs(decoded.interval) as u64),
+        };
+        self.state = Some(DeviceFlowState::Pending(pi.clone()));
+        
+        Ok(pi)
     }
 
     /// If the first call is successful, this method may be called.
@@ -197,8 +188,6 @@ impl<C> DeviceFlow<C>
                     json_str
                 }
             };
-
-        
 
         match json::from_str::<JsonError>(&json_str) {
             Err(_) => {} // ignore, move on, it's not an error

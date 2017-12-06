@@ -46,6 +46,18 @@ impl From<JsonError> for RequestError {
     }
 }
 
+impl From<hyper::Error> for RequestError {
+    fn from(value: hyper::Error) -> RequestError {
+        RequestError::HttpError(value)
+    }
+}
+
+impl From<reqwest::Error> for RequestError {
+    fn from(value: reqwest::Error) -> RequestError {
+        RequestError::ReqwestError(value)
+    }
+}
+
 impl fmt::Display for RequestError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
