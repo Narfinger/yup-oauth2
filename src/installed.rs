@@ -17,6 +17,7 @@ use hyper;
 use hyper::{client, header, server};
 use hyper_rustls::HttpsConnector;
 use futures;
+use reqwest;
 use serde_json::error;
 use url::form_urlencoded;
 use url::percent_encoding::{percent_encode, QUERY_ENCODE_SET};
@@ -54,7 +55,7 @@ fn build_authentication_request_url<'a, T, I>(auth_uri: &str,
          format!("&client_id={}", client_id)]
         .into_iter()
         .fold(url, |mut u, param| {
-            u.push_str(&percent_encode(param.as_ref(), QUERY_ENCODE_SET));
+            u.push_str(&percent_encode(param.as_ref(), QUERY_ENCODE_SET).collect::<String>());
             u
         })
 }
@@ -99,6 +100,7 @@ impl<C,St,B> InstalledFlow<C,St,B>
             Some(InstalledFlowReturnMethod::Interactive) => default,
             // Start server on localhost to accept auth code.
             Some(InstalledFlowReturnMethod::HTTPRedirect(port)) => {
+
                 let server = server::Server::http(format!("127.0.0.1:{}", port).as_str());
 
                 match server {
@@ -235,29 +237,16 @@ impl<C,St,B> InstalledFlow<C,St,B>
                                                                      ("grant_type".to_string(),
                                                                       "authorization_code".to_string())]);
 
-        let result: Result<client::Response, hyper::Error> = self.client
-            .borrow_mut()
-            .post(&appsecret.token_uri)
-            .body(&body)
-            .header(header::ContentType("application/x-www-form-urlencoded".parse().unwrap()))
-            .send();
 
-        let mut resp = String::new();
-
-        match result {
-            Result::Err(e) => return Result::Err(Box::new(e)),
-            Result::Ok(mut response) => {
-                let result = response.read_to_string(&mut resp);
-
-                match result {
-                    Result::Err(e) => return Result::Err(Box::new(e)),
-                    Result::Ok(_) => (),
-                }
-            }
-        }
-
-        let token_resp: Result<JSONTokenResponse, error::Error> = serde_json::from_str(&resp);
-
+        let client = reqwest::Client::new();
+        let result = client.post(&appsecret.token_uri)
+            .header(reqwest::header::ContentType("application/x-www-form-urlencoded".parse().unwrap()))
+            .body(body)
+            .send()?;
+        
+        
+        let token_resp: JSONTokenResponse = result.json()?;
+        
         match token_resp {
             Result::Err(e) => return Result::Err(Box::new(e)),
             Result::Ok(tok) => Result::Ok(tok) as Result<JSONTokenResponse, Box<Error>>,
@@ -288,30 +277,31 @@ impl server::Service for InstalledFlowHandler {
     type Future = futures::future::FutureResult<Self::Response, hyper::Error>;
 
     fn call(&self, rq: server::Request) -> Self::Future {
-        // match rq.uri {
-        //     // uri::RequestUri::AbsolutePath(path) => {
-        //     //     // We use a fake URL because the redirect goes to a URL, meaning we
-        //     //     // can't use the url form decode (because there's slashes and hashes and stuff in
-        //     //     // it).
-        //     //     let url = hyper::Uri::parse(&format!("http://example.com{}", path));
+        match rq.uri() {
+            hyper::uri::RequestUri::AbsolutePath(path) => {
+                // We use a fake URL because the redirect goes to a URL, meaning we
+                // can't use the url form decode (because there's slashes and hashes and stuff in
+                // it).
+                let url = hyper::Uri::parse(&format!("http://example.com{}", path));
 
-        //     //     if url.is_err() {
-        //     //         *rp.status_mut() = status::StatusCode::BadRequest;
-        //     //         let _ = rp.send("Unparseable URL".as_ref());
-        //     //     } else {
-        //     //         self.handle_url(url.unwrap());
-        //     //         *rp.status_mut() = status::StatusCode::Ok;
-        //     //         let _ =
-        //     //             rp.send("<html><head><title>Success</title></head><body>You may now \
-        //     //                      close this window.</body></html>"
-        //     //                 .as_ref());
-        //     //     }
-        //     // }
-        //     _ => {
-        //         *rp.status_mut() = status::StatusCode::BadRequest;
-        //         rp.send("Invalid Request!".as_ref())
-        //     }
-        // }
+                if url.is_err() {
+                    *rp.status_mut() = status::StatusCode::BadRequest;
+                    let _ = rp.send("Unparseable URL".as_ref());
+                } else {
+                    self.handle_url(url.unwrap());
+                    *rp.status_mut() = status::StatusCode::Ok;
+                    let _ =
+                        rp.send("<html><head><title>Success</title></head><body>You may now \
+                                 close this window.</body></html>"
+                            .as_ref());
+                }
+            }
+            _ => {
+                *rq.status_mut() = status::StatusCode::BadRequest;
+                rq.send("Invalid Request!".as_ref())
+            }
+        }
+        
     }
 }
 

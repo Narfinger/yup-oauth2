@@ -33,6 +33,7 @@ use rustls::internal::pemfile;
 use base64;
 use chrono;
 use hyper;
+use reqwest;
 use serde_json;
 
 const GRANT_TYPE: &'static str = "urn:ietf:params:oauth:grant-type:jwt-bearer";
@@ -116,7 +117,7 @@ impl JWT {
     fn sign(&self, private_key: &str) -> Result<String, Box<error::Error>> {
         let mut jwt_head = self.encode_claims();
         let key = try!(decode_rsa_key(private_key));
-        let signer = try!(sign::RSASigner::new(&key)
+        let signer = try!(sign::RSASigningKey::new(&key)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "Couldn't initialize signer")));
         let signature = try!(signer.sign(rustls::SignatureScheme::RSA_PKCS1_SHA256,
                                          jwt_head.as_bytes())
@@ -225,19 +226,13 @@ impl<'a, C> ServiceAccountAccess<C>
         form_urlencoded::Serializer::new(&mut body).extend_pairs(vec![("grant_type".to_string(),
                                                                       GRANT_TYPE.to_string()),
                                                                      ("assertion".to_string(), signed)]);
-        
-        let mut response = String::new();
-        let mut result = try!(self.client
-            .borrow_mut()
-            .post(self.key.token_uri.as_ref().unwrap())
+        let client = reqwest::Client::new();
+        let res = client.post(self.key.token_uri)
+            .header(reqwest::header::ContentType("application/x-www-form-urlencoded".parse().unwrap()))
             .body(&body)
-            .header(header::ContentType("application/x-www-form-urlencoded".parse().unwrap()))
-            .send());
-
-        try!(result.read_to_string(&mut response));
-
-        let token: Result<TokenResponse, serde_json::error::Error> =
-            serde_json::from_str(&response);
+            .send()?;
+        
+        let token: TokenResponse = res.json()?;
 
         match token {
             Err(e) => return Err(Box::new(e)),
