@@ -9,6 +9,7 @@ use std::borrow::BorrowMut;
 use std::convert::AsRef;
 use std::error::Error;
 use std::io;
+use std::str::FromStr;
 use std::io::Read;
 use std::sync::Mutex;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -17,8 +18,10 @@ use hyper;
 use hyper::{client, header, server};
 use hyper_rustls::HttpsConnector;
 use futures;
+use futures::Future;
 use reqwest;
 use serde_json::error;
+use url::Url;
 use url::form_urlencoded;
 use url::percent_encoding::{percent_encode, QUERY_ENCODE_SET};
 
@@ -287,7 +290,7 @@ impl server::Service for InstalledFlowHandler {
             // We use a fake URL because the redirect goes to a URL, meaning we
             // can't use the url form decode (because there's slashes and hashes and stuff in
             // it).
-            let url = hyper::Uri::parse(&format!("http://example.com{}", path));
+            let url = hyper::Uri::from_str(&format!("http://example.com{}", path));
 
             
             if url.is_err() {
@@ -300,22 +303,21 @@ impl server::Service for InstalledFlowHandler {
         } else {
             resp.with_status(hyper::StatusCode::BadRequest).with_body("Invalid Request!");                
         }
-        futures::finished(resp).boxed()
+        futures::finished(resp)
     }
 }
 
 impl InstalledFlowHandler {
-    fn handle_url(&self, url: hyper::Uri) {
+    fn handle_url(&self, hyper_url: hyper::Uri) {
         // Google redirects to the specified localhost URL, appending the authorization
         // code, like this: http://localhost:8080/xyz/?code=4/731fJ3BheyCouCniPufAd280GHNV5Ju35yYcGs
         // We take that code and send it to the get_authorization_code() function that
         // waits for it.
-        for (param, val) in url.query_pairs().into_owned() {
-            if param == "code".to_string() {
-                let _ = self.auth_code_snd.lock().unwrap().send(val);
-            }
-        }
+        let url = Url::parse(hyper_url.as_ref()).unwrap();
 
+        let (_, value) = url.query_pairs().filter(|&(param, _)| param == "code").nth(0).unwrap();
+
+        self.auth_code_snd.lock().unwrap().send(String::from(value));
     }
 }
 
