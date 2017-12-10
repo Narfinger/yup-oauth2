@@ -25,6 +25,8 @@ pub struct RefreshFlow<C> {
 
 /// All possible outcomes of the refresh flow
 pub enum RefreshResult {
+    /// Not yet initialied result
+    Uninitialized,
     /// Indicates connection failure
     Error(reqwest::Error),
     /// The server did not answer with a new token, providing the server message
@@ -39,7 +41,7 @@ impl<C> RefreshFlow<C>
     pub fn new(client: C) -> RefreshFlow<C> {
         RefreshFlow {
             client: client,
-            result: RefreshResult::Error(hyper::Error::TooLarge),
+            result: RefreshResult::Uninitialized,
         }
     }
 

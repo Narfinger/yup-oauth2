@@ -122,7 +122,7 @@ impl<D, S, C> Authenticator<D, S, C>
                                 }
                                 Retry::After(d) => sleep(d),
                             }
-                        }
+                        },
                         RequestError::InvalidClient |
                         RequestError::NegativeServerResponse(_, _) |
                         RequestError::InvalidScope(_) => {

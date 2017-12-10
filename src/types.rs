@@ -218,7 +218,7 @@ impl Token {
         if self.access_token.len() == 0 {
             panic!("called expired() on unset token");
         }
-        self.expiry_date() <= Utc
+        self.expiry_date() <= Utc::now()
     }
 
     /// Returns a DateTime object representing our expiry date.
