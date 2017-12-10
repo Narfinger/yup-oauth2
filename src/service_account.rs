@@ -24,7 +24,7 @@ use types::{StringError, Token};
 
 use hyper::header;
 use hyper_rustls::HttpsConnector;
-use url::form_urlencoded;
+use url::{Url, form_urlencoded};
 
 use rustls::{self, PrivateKey};
 use rustls::sign::{self, Signer, SigningKey};
@@ -230,13 +230,12 @@ impl<'a, C> ServiceAccountAccess<C>
                                                                       GRANT_TYPE.to_string()),
                                                                      ("assertion".to_string(), signed)]);
         let client = reqwest::Client::new();
-        let res = client.post(self.key.token_uri.unwrap())
+        let token = client.post(Url::parse(&self.key.token_uri.unwrap()).unwrap())
             .header(reqwest::header::ContentType("application/x-www-form-urlencoded".parse().unwrap()))
             .body(body)
-            .send()?;
+            .send()
+            .map(|s| s.json::<TokenResponse>())?;
         
-        let token: TokenResponse = res.json()?;
-
         match token {
             Err(e) => return Err(Box::new(e)),
             Ok(token) => {
