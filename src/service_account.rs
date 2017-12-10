@@ -27,7 +27,7 @@ use hyper_rustls::HttpsConnector;
 use url::form_urlencoded;
 
 use rustls::{self, PrivateKey};
-use rustls::sign::{self, Signer};
+use rustls::sign::{self, Signer, SigningKey};
 use rustls::internal::pemfile;
 
 use base64;
@@ -116,12 +116,15 @@ impl JWT {
 
     fn sign(&self, private_key: &str) -> Result<String, Box<error::Error>> {
         let mut jwt_head = self.encode_claims();
-        let key = try!(decode_rsa_key(private_key));
-        let signer = try!(sign::RSASigningKey::new(&key)
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "Couldn't initialize signer")));
-        let signature = try!(signer.sign(rustls::SignatureScheme::RSA_PKCS1_SHA256,
-                                         jwt_head.as_bytes())
-            .map_err(|_| io::Error::new(io::ErrorKind::Other, "Couldn't sign claims")));
+        let key = decode_rsa_key(private_key)?;
+        let signer = sign::RSASigningKey::new(&key)
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "Couldn't initialize signer"))
+            .and_then(|s| s.choose_scheme(&vec![rustls::SignatureScheme::RSA_PKCS1_SHA256])
+                      .ok_or(io:: Error::new(io::ErrorKind::Other, "Could not initialize signer with scheme")))?;
+        
+        let signature = signer.sign(jwt_head.as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::Other, "Couldn't sign claims"))?;
+
         let signature_b64 = encode_base64(signature);
 
         jwt_head.push_str(".");
