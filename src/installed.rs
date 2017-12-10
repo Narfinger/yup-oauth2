@@ -102,8 +102,7 @@ impl<C,St,B> InstalledFlow<C,St,B>
             Some(InstalledFlowReturnMethod::HTTPRedirect(port)) => {
 
                 let (tx, rx) = channel();
-                let listening =
-                    server.handle(InstalledFlowHandler { auth_code_snd: Mutex::new(tx) });
+                let listening = InstalledFlowHandler { auth_code_snd: Mutex::new(tx) };
                 
                 let http_server = hyper::server::Server::Http::new();
                 http_server.bind(format!("127.0.0.1:{}", port).parse().unwrap(), listening);
@@ -279,31 +278,29 @@ impl server::Service for InstalledFlowHandler {
     type Future = futures::future::FutureResult<Self::Response, hyper::Error>;
 
     fn call(&self, rq: server::Request) -> Self::Future {
-        match rq.uri() {
-            hyper::uri::RequestUri::AbsolutePath(path) => {
-                // We use a fake URL because the redirect goes to a URL, meaning we
-                // can't use the url form decode (because there's slashes and hashes and stuff in
-                // it).
-                let url = hyper::Uri::parse(&format!("http://example.com{}", path));
-
-                if url.is_err() {
-                    *rp.status_mut() = status::StatusCode::BadRequest;
-                    let _ = rp.send("Unparseable URL".as_ref());
-                } else {
-                    self.handle_url(url.unwrap());
-                    *rp.status_mut() = status::StatusCode::Ok;
-                    let _ =
-                        rp.send("<html><head><title>Success</title></head><body>You may now \
-                                 close this window.</body></html>"
-                            .as_ref());
-                }
-            }
-            _ => {
-                *rq.status_mut() = status::StatusCode::BadRequest;
-                rq.send("Invalid Request!".as_ref())
-            }
-        }
+        let path = rq.uri().path();
+        //this returns a response
+        let mut resp = hyper::Response::new();
         
+        if path.is_empty() {
+            //     hyper::uri::RequestUri::AbsolutePath(path) => {
+            // We use a fake URL because the redirect goes to a URL, meaning we
+            // can't use the url form decode (because there's slashes and hashes and stuff in
+            // it).
+            let url = hyper::Uri::parse(&format!("http://example.com{}", path));
+
+            
+            if url.is_err() {
+                resp.with_status(hyper::StatusCode::BadRequest).with_body("Unparseable URL");
+            } else {
+                self.handle_url(url.unwrap());
+                resp.with_status(hyper::StatusCode::Ok).with_body("<html><head><title>Success</title></head><body>You may now \
+                             close this window.</body></html>");
+            }
+        } else {
+            resp.with_status(hyper::StatusCode::BadRequest).with_body("Invalid Request!");                
+        }
+        futures::finished(resp).boxed()
     }
 }
 
