@@ -227,9 +227,9 @@ impl<'a, C> ServiceAccountAccess<C>
                                                                       GRANT_TYPE.to_string()),
                                                                      ("assertion".to_string(), signed)]);
         let client = reqwest::Client::new();
-        let res = client.post(self.key.token_uri)
+        let res = client.post(self.key.token_uri.unwrap())
             .header(reqwest::header::ContentType("application/x-www-form-urlencoded".parse().unwrap()))
-            .body(&body)
+            .body(body)
             .send()?;
         
         let token: TokenResponse = res.json()?;

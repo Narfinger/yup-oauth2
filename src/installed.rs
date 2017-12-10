@@ -101,16 +101,23 @@ impl<C,St,B> InstalledFlow<C,St,B>
             // Start server on localhost to accept auth code.
             Some(InstalledFlowReturnMethod::HTTPRedirect(port)) => {
 
-                let server = server::Server::http(format!("127.0.0.1:{}", port).as_str());
+                let (tx, rx) = channel();
+                let listening =
+                    server.handle(InstalledFlowHandler { auth_code_snd: Mutex::new(tx) });
+                
+                let http_server = hyper::server::Server::Http::new();
+                http_server.bind(format!("127.0.0.1:{}", port).parse().unwrap(), listening);
+                
+                //let server = server::Server::http(format!("127.0.0.1:{}", port).as_str());
 
-                match server {
-                    Result::Err(_) => default,
-                    Result::Ok(server) => {
-                        let (tx, rx) = channel();
-                        let listening =
-                            server.handle(InstalledFlowHandler { auth_code_snd: Mutex::new(tx) });
+                // match http_server {
+                //     Result::Err(_) => default,
+                //     Result::Ok(server) => {
+                //         let (tx, rx) = channel();
+                //         let listening =
+                //             server.handle(InstalledFlowHandler { auth_code_snd: Mutex::new(tx) });
 
-                        match listening {
+                        match http_server {
                             Result::Err(_) => default,
                             Result::Ok(listening) => {
                                 InstalledFlow {
@@ -121,8 +128,8 @@ impl<C,St,B> InstalledFlow<C,St,B>
                                 }
                             }
                         }
-                    }
-                }
+                 //    }
+                // }
             }
         }
     }
@@ -220,7 +227,7 @@ impl<C,St,B> InstalledFlow<C,St,B>
     fn request_token(&mut self,
                      appsecret: &ApplicationSecret,
                      authcode: &str)
-                     -> Result<JSONTokenResponse, Box<Error>> {
+                     -> Result<JSONTokenResponse, reqwest::Error> {
         let redirect_uri;
 
         match self.port {
@@ -245,12 +252,7 @@ impl<C,St,B> InstalledFlow<C,St,B>
             .send()?;
         
         
-        let token_resp: JSONTokenResponse = result.json()?;
-        
-        match token_resp {
-            Result::Err(e) => return Result::Err(Box::new(e)),
-            Result::Ok(tok) => Result::Ok(tok) as Result<JSONTokenResponse, Box<Error>>,
-        }
+        result.json::<JSONTokenResponse>()
     }
 }
 
