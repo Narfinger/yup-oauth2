@@ -7,7 +7,9 @@ use hyper_rustls::HttpsConnector;
 use serde_json as json;
 use url::form_urlencoded;
 use super::Token;
+use reqwest;
 use std::borrow::BorrowMut;
+use std::error::Error;
 use std::io::Read;
 
 /// Implements the [Outh2 Refresh Token Flow](https://developers.google.com/youtube/v3/guides/authentication#devices).
@@ -24,7 +26,7 @@ pub struct RefreshFlow<C> {
 /// All possible outcomes of the refresh flow
 pub enum RefreshResult {
     /// Indicates connection failure
-    Error(hyper::Error),
+    Error(reqwest::Error),
     /// The server did not answer with a new token, providing the server message
     RefreshError(String, Option<String>),
     /// The refresh operation finished successfully, providing a new `Token`
@@ -71,46 +73,36 @@ impl<C> RefreshFlow<C>
                                                                   ("refresh_token", refresh_token),
                                                                   ("grant_type", "refresh_token")]);
 
-        let json_str: String = match self.client
-            .borrow_mut()
-            .post(&client_secret.token_uri)
-            .header(ContentType("application/x-www-form-urlencoded".parse().unwrap()))
-            .body(&*req)
-            .send() {
-            Err(err) => {
-                self.result = RefreshResult::Error(err);
-                return &self.result;
-            }
-            Ok(mut res) => {
-                let mut json_str = String::new();
-                res.read_to_string(&mut json_str).unwrap();
-                json_str
-            }
-        };
-
+        
         #[derive(Deserialize)]
         struct JsonToken {
             access_token: String,
             token_type: String,
             expires_in: i64,
         }
+        
+        let client = reqwest::Client::new();
+        let response = client.post(&client_secret.token_uri)
+            .header(reqwest::header::ContentType("application/x-www-form-urlencoded".parse().unwrap()))
+            .body(req)
+            .send();
 
-        match json::from_str::<JsonError>(&json_str) {
-            Err(_) => {}
+        self.result = match response {
+            Err(e) => RefreshResult::RefreshError(e.description().to_owned(), None), //FIXME the none result is not really what we want, we want more of the error
             Ok(res) => {
-                self.result = RefreshResult::RefreshError(res.error, res.error_description);
-                return &self.result;
+                let t_result = res.json::<JsonToken>();
+                match t_result {
+                    Err(e) => RefreshResult::Error(e),
+                    Ok(t)  => RefreshResult::Success(Token {
+                        access_token: t.access_token,
+                        token_type: t.token_type,
+                        refresh_token: refresh_token.to_string(),
+                        expires_in: None,
+                        expires_in_timestamp: Some(Utc::now().timestamp() + t.expires_in),
+                    })
+                }
             }
-        }
-
-        let t: JsonToken = json::from_str(&json_str).unwrap();
-        self.result = RefreshResult::Success(Token {
-            access_token: t.access_token,
-            token_type: t.token_type,
-            refresh_token: refresh_token.to_string(),
-            expires_in: None,
-            expires_in_timestamp: Some(Utc::now().timestamp() + t.expires_in),
-        });
+        };
 
         &self.result
     }
